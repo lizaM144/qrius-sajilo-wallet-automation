@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sajilo Wallet</title>
+<style>
+  :root {
+    --green: #0b7a52; --green-dark: #075a3c; --green-soft: #e6f4ee;
+    --ink: #1d2b26; --muted: #5d6b66; --line: #d7e1dd; --bg: #f4f7f6;
+    --red: #b42318; --red-soft: #fdecea; --amber-soft: #fff6e0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); }
+  a { color: var(--green); }
+  header.topbar { background: var(--green); color: #fff; display: flex; align-items: center; gap: 16px; padding: 12px 20px; flex-wrap: wrap; }
+  header.topbar .brand { font-weight: 700; font-size: 18px; margin-right: auto; }
+  header.topbar nav { display: flex; gap: 14px; }
+  header.topbar nav a { color: #fff; text-decoration: none; padding: 4px 2px; border-bottom: 2px solid transparent; }
+  header.topbar nav a[aria-current="page"] { border-bottom-color: #fff; font-weight: 600; }
+  header.topbar .who { font-size: 14px; opacity: .9; }
+  main { max-width: 880px; margin: 24px auto; padding: 0 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .auth { max-width: 400px; margin: 64px auto; }
+  .auth h1 { color: var(--green); margin: 0 0 4px; }
+  .auth .sub { color: var(--muted); margin: 0 0 20px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
+  input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; background: #fff; }
+  input:focus, select:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  .field-error { color: var(--red); font-size: 13px; margin: 6px 0 0; }
+  .alert { background: var(--red-soft); color: var(--red); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 14px; }
+  .info { background: var(--green-soft); color: var(--green-dark); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }
+  button, .btn { display: inline-block; border: 0; border-radius: 8px; padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:disabled { background: #7fb8a2; cursor: wait; }
+  .btn-ghost { background: #fff; color: var(--green); border: 1px solid var(--green); }
+  .btn-light { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.5); padding: 6px 12px; font-size: 14px; }
+  .btn-block { width: 100%; margin-top: 18px; }
+  .balance-card { background: linear-gradient(135deg, var(--green), #13a06c); color: #fff; border: 0; }
+  .balance-card .label { opacity: .85; margin: 0; }
+  .balance-card .amount { font-size: 34px; font-weight: 700; margin: 6px 0 12px; letter-spacing: .5px; }
+  .balance-card .btn-light { margin-right: 8px; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  ul.recent { list-style: none; padding: 0; margin: 0; }
+  ul.recent li { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+  ul.recent li:last-child { border-bottom: 0; }
+  .credit { color: var(--green); } .debit { color: var(--red); }
+  .muted { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { background: var(--green-soft); }
+  .filters { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
+  .filters label { margin-top: 0; }
+  dl.summary { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; margin: 0; }
+  dl.summary dt { color: var(--muted); } dl.summary dd { margin: 0; font-weight: 600; }
+  .success { text-align: center; }
+  .success h2 { color: var(--green); }
+  .tick { width: 56px; height: 56px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; font-size: 30px; margin: 0 auto; }
+  .table-wrap { overflow-x: auto; }
+  @media (max-width: 600px) { .filters { grid-template-columns: 1fr; } dl.summary { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const TOKEN_KEY = 'sw_token';
+  const USER_KEY = 'sw_user';
+  let config = { bugMode: false, minAmount: 10, maxAmount: 25000 };
+  let flash = null; // one-time message for the login page
+
+  // ---------- utilities ----------
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const money = (n) => 'Rs. ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const getToken = () => localStorage.getItem(TOKEN_KEY);
+  const setError = (id, msg) => { const el = document.getElementById(id); if (!el) return; el.textContent = msg || ''; el.hidden = !msg; };
+
+  async function api(method, url, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getToken();
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    let data = null;
+    try { data = await res.json(); } catch { /* empty body */ }
+    if (res.status === 401 && url !== '/api/login') {
+      logout('Your session has expired. Please log in again.');
+      throw new Error('unauthorized');
+    }
+    return { status: res.status, data };
+  }
+
+  function logout(message) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    flash = message || null;
+    go('/login', true);
+  }
+
+  // ---------- router ----------
+  const PROTECTED = ['/dashboard', '/payment', '/transactions'];
+  function go(path, replace = false) {
+    if (replace) history.replaceState({}, '', path); else history.pushState({}, '', path);
+    render();
+  }
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-link]');
+    if (!a) return;
+    e.preventDefault();
+    go(a.getAttribute('href'));
+  });
+  window.addEventListener('popstate', render);
+
+  function render() {
+    let p = location.pathname;
+    if (p === '/') { go(getToken() ? '/dashboard' : '/login', true); return; }
+    if (PROTECTED.includes(p) && !getToken()) { go('/login', true); return; }
+    if (p === '/login' && getToken()) { go('/dashboard', true); return; }
+    if (p === '/login') return renderLogin();
+    if (p === '/dashboard') return renderDashboard();
+    if (p === '/payment') return renderPayment();
+    if (p === '/transactions') return renderTransactions();
+  }
+
+  function shell(active, inner) {
+    const user = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
+    const link = (href, text) => `<a href="${href}" data-link ${active === href ? 'aria-current="page"' : ''}>${text}</a>`;
+    app.innerHTML = `
+      <header class="topbar">
+        <span class="brand">Sajilo Wallet</span>
+        <nav aria-label="Main">${link('/dashboard', 'Dashboard')}${link('/payment', 'Send Money')}${link('/transactions', 'History')}</nav>
+        <span class="who" data-testid="nav-user">${esc(user.name || '')}</span>
+        <button class="btn-light" id="logout" data-testid="logout-button">Logout</button>
+      </header>
+      <main>${inner}</main>`;
+    document.getElementById('logout').addEventListener('click', () => logout('You have been logged out.'));
+  }
+
+  // ---------- LOGIN ----------
+  function renderLogin() {
+    document.title = 'Login | Sajilo Wallet';
+    const message = flash; flash = null;
+    app.innerHTML = `
+      <main class="auth">
+        <div class="card">
+          <h1>Sajilo Wallet</h1>
+          <p class="sub">Login to your wallet</p>
+          ${message ? `<p class="info" role="status" data-testid="login-info">${esc(message)}</p>` : ''}
+          <form id="login-form" novalidate>
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" data-testid="username-input">
+            <p class="field-error" id="username-error" data-testid="username-error" hidden></p>
+
+            <label for="password">Password</label>
+            <div class="row">
+              <input id="password" name="password" type="password" autocomplete="current-password" data-testid="password-input">
+              <button type="button" class="btn-ghost" id="toggle-password" data-testid="toggle-password" aria-pressed="false">Show</button>
+            </div>
+            <p class="field-error" id="password-error" data-testid="password-error" hidden></p>
+
+            <div class="alert" role="alert" id="login-error" data-testid="login-error" hidden></div>
+            <button type="submit" class="btn btn-primary btn-block" id="login-button" data-testid="login-button">Login</button>
+          </form>
+        </div>
+      </main>`;
+
+    const pw = document.getElementById('password');
+    const toggle = document.getElementById('toggle-password');
+    toggle.addEventListener('click', () => {
+      const show = pw.type === 'password';
+      pw.type = show ? 'text' : 'password';
+      toggle.textContent = show ? 'Hide' : 'Show';
+      toggle.setAttribute('aria-pressed', String(show));
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = pw.value;
+      setError('username-error', username ? '' : 'Username is required');
+      setError('password-error', password ? '' : 'Password is required');
+      setError('login-error', '');
+      if (!username || !password) return;
+
+      const btn = document.getElementById('login-button');
+      btn.disabled = true; btn.textContent = 'Logging in...';
+      const { status, data } = await api('POST', '/api/login', { username, password });
+      btn.disabled = false; btn.textContent = 'Login';
+      if (status === 200) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        go('/dashboard');
+      } else {
+        setError('login-error', (data && data.message) || 'Login failed');
+      }
+    });
+  }
+
+  // ---------- DASHBOARD ----------
+  async function renderDashboard() {
+    document.title = 'Dashboard | Sajilo Wallet';
+    shell('/dashboard', `<p class="muted">Loading...</p>`);
+    let me, txns;
+    try {
+      txns = (await api('GET', '/api/transactions')).data;
+      if (config.bugMode) {
+        me = JSON.parse(localStorage.getItem(USER_KEY) || '{}'); // BUG 2 (bug mode): balance read from login-time cache
+      } else {
+        me = (await api('GET', '/api/me')).data;
+        localStorage.setItem(USER_KEY, JSON.stringify(me));
+      }
+    } catch { return; }
+    if (location.pathname !== '/dashboard') return;
+
+    const recent = (txns || []).slice(0, 3).map((t) => `
+      <li data-testid="recent-txn">
+        <span><strong>${esc(t.description)}</strong><br><span class="muted">${esc(t.date)} · ${esc(t.id)}</span></span>
+        <span class="${t.type === 'Credit' ? 'credit' : 'debit'}">${t.type === 'Credit' ? '+' : '-'} ${money(t.amount)}</span>
+      </li>`).join('');
+
+    shell('/dashboard', `
+      <h1 data-testid="welcome-message">Namaste, ${esc(me.name)}</h1>
+      <section class="card balance-card" aria-label="Balance">
+        <p class="label">Available balance</p>
+        <p class="amount" data-testid="balance-amount" id="balance-amount">${money(me.balance)}</p>
+        <button class="btn btn-light" id="toggle-balance" data-testid="toggle-balance">Hide balance</button>
+        <span>Wallet ID: <strong data-testid="wallet-id">${esc(me.mobile)}</strong></span>
+      </section>
+      <section class="card">
+        <h2>Quick actions</h2>
+        <div class="actions">
+          <a class="btn btn-primary" href="/payment" data-link data-testid="quick-pay">Make a Payment</a>
+          <a class="btn btn-ghost" href="/transactions" data-link data-testid="quick-history">View All Transactions</a>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Recent transactions</h2>
+        ${recent ? `<ul class="recent" data-testid="recent-transactions">${recent}</ul>` : '<p data-testid="recent-empty">No transactions yet</p>'}
+      </section>`);
+
+    const bal = document.getElementById('balance-amount');
+    const tb = document.getElementById('toggle-balance');
+    tb.addEventListener('click', () => {
+      const hidden = tb.textContent === 'Show balance';
+      bal.textContent = hidden ? money(me.balance) : 'Rs. XXXX.XX';
+      tb.textContent = hidden ? 'Hide balance' : 'Show balance';
+    });
+  }
+
+  // ---------- PAYMENT ----------
+  async function renderPayment() {
+    document.title = 'Send Money | Sajilo Wallet';
+    shell('/payment', `<p class="muted">Loading...</p>`);
+    let me;
+    try { me = (await api('GET', '/api/me')).data; } catch { return; }
+    if (location.pathname !== '/payment') return;
+    const draft = { receiver: '', amount: '', purpose: '', remarks: '', receiverName: '' };
+    step1();
+
+    function step1() {
+      shell('/payment', `
+        <h1>Send Money</h1>
+        <section class="card">
+          <p>Available balance: <strong data-testid="payment-balance">${money(me.balance)}</strong></p>
+          <form id="pay-form" novalidate>
+            <label for="receiver">Receiver mobile number</label>
+            <input id="receiver" name="receiver" inputmode="numeric" placeholder="98XXXXXXXX" value="${esc(draft.receiver)}" data-testid="receiver-input">
+            <p class="field-error" id="receiver-error" data-testid="receiver-error" hidden></p>
+
+            <label for="amount">Amount (Rs.)</label>
+            <input id="amount" name="amount" inputmode="decimal" placeholder="Min Rs. 10, max Rs. 25,000" value="${esc(draft.amount)}" data-testid="amount-input">
+            <p class="field-error" id="amount-error" data-testid="amount-error" hidden></p>
+
+            <label for="purpose">Purpose</label>
+            <select id="purpose" name="purpose" data-testid="purpose-select">
+              <option value="">-- Select purpose --</option>
+              ${['Personal Use', 'Bill Sharing', 'Family Expenses', 'Lend/Borrow'].map((p) => `<option ${draft.purpose === p ? 'selected' : ''}>${p}</option>`).join('')}
+            </select>
+            <p class="field-error" id="purpose-error" data-testid="purpose-error" hidden></p>
+
+            <label for="remarks">Remarks (optional)</label>
+            <input id="remarks" name="remarks" maxlength="50" value="${esc(draft.remarks)}" data-testid="remarks-input">
+            <p class="muted"><span id="remarks-count" data-testid="remarks-count">${draft.remarks.length}</span>/50 characters</p>
+
+            <button type="submit" class="btn btn-primary btn-block" id="continue-button" data-testid="continue-button">Continue</button>
+          </form>
+        </section>`);
+
+      const remarks = document.getElementById('remarks');
+      remarks.addEventListener('input', () => { document.getElementById('remarks-count').textContent = remarks.value.length; });
+
+      document.getElementById('pay-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        draft.receiver = document.getElementById('receiver').value.trim();
+        draft.amount = document.getElementById('amount').value.trim();
+        draft.purpose = document.getElementById('purpose').value;
+        draft.remarks = remarks.value;
+        const errs = validate();
+        if (!errs.receiver) {
+          // look up the receiver name
+          const r = await api('GET', '/api/receivers?mobile=' + encodeURIComponent(draft.receiver));
+          if (r.status === 200) draft.receiverName = r.data.name; else errs.receiver = r.data.message;
+        }
+        setError('receiver-error', errs.receiver);
+        setError('amount-error', errs.amount);
+        setError('purpose-error', errs.purpose);
+        if (!errs.receiver && !errs.amount && !errs.purpose) step2();
+      });
+    }
+
+    function validate() {
+      const e = {};
+      const r = draft.receiver;
+      if (!r) e.receiver = 'Receiver mobile number is required';
+      else if (!/^(97|98)\d{8}$/.test(r)) e.receiver = 'Enter a valid 10-digit mobile number starting with 97 or 98';
+      else if (r === me.mobile) e.receiver = 'You cannot send money to your own wallet';
+
+      const a = draft.amount;
+      if (!a) e.amount = 'Amount is required';
+      else if (!/^\d+(\.\d{1,2})?$/.test(a)) e.amount = 'Enter a valid amount with up to 2 decimal places';
+      else {
+        const n = Number(a);
+        const overMax = config.bugMode ? n >= config.maxAmount : n > config.maxAmount;
+        if (n < config.minAmount) e.amount = 'Minimum amount is Rs. 10';
+        else if (overMax) e.amount = 'Maximum amount per transaction is Rs. 25,000';
+        else if (n > me.balance) e.amount = 'Insufficient balance';
+      }
+      if (!draft.purpose) e.purpose = 'Please select a purpose';
+      return e;
+    }
+
+    function step2() {
+      shell('/payment', `
+        <h1>Send Money</h1>
+        <section class="card">
+          <h2>Confirm Payment</h2>
+          <dl class="summary" data-testid="confirm-summary">
+            <dt>Receiver name</dt><dd data-testid="confirm-receiver-name">${esc(draft.receiverName)}</dd>
+            <dt>Mobile number</dt><dd data-testid="confirm-receiver">${esc(draft.receiver)}</dd>
+            <dt>Amount</dt><dd data-testid="confirm-amount">${money(draft.amount)}</dd>
+            <dt>Purpose</dt><dd data-testid="confirm-purpose">${esc(draft.purpose)}</dd>
+            <dt>Remarks</dt><dd data-testid="confirm-remarks">${esc(draft.remarks) || '-'}</dd>
+          </dl>
+          <form id="confirm-form" novalidate>
+            <label for="pin">Transaction PIN</label>
+            <input id="pin" name="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" data-testid="pin-input">
+            <p class="field-error" id="pin-error" data-testid="pin-error" hidden></p>
+            <div class="alert" role="alert" id="payment-error" data-testid="payment-error" hidden></div>
+            <div class="actions" style="margin-top:18px">
+              <button type="button" class="btn btn-ghost" id="back-button" data-testid="back-button">Back</button>
+              <button type="submit" class="btn btn-primary" id="confirm-button" data-testid="confirm-button">Confirm Payment</button>
+            </div>
+          </form>
+        </section>`);
+
+      document.getElementById('back-button').addEventListener('click', step1);
+      document.getElementById('confirm-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pin = document.getElementById('pin').value;
+        setError('payment-error', '');
+        if (!/^\d{4}$/.test(pin)) { setError('pin-error', 'PIN must be 4 digits'); return; }
+        setError('pin-error', '');
+        const btn = document.getElementById('confirm-button');
+        btn.disabled = true; btn.textContent = 'Processing...';
+        let r;
+        try { r = await api('POST', '/api/payments', { receiver: draft.receiver, amount: draft.amount, purpose: draft.purpose, remarks: draft.remarks, pin }); }
+        catch { return; }
+        btn.disabled = false; btn.textContent = 'Confirm Payment';
+        if (r.status === 201) return step3(r.data);
+        if (r.data && r.data.errors && r.data.errors.pin) setError('pin-error', r.data.errors.pin);
+        else setError('payment-error', (r.data && r.data.errors && Object.values(r.data.errors)[0]) || (r.data && r.data.message) || 'Payment failed');
+      });
+    }
+
+    function step3(result) {
+      me.balance = result.balance;
+      shell('/payment', `
+        <section class="card success" role="status">
+          <div class="tick" aria-hidden="true">&#10003;</div>
+          <h2 data-testid="success-message">Payment Successful</h2>
+          <dl class="summary" style="text-align:left;max-width:420px;margin:0 auto 18px">
+            <dt>Transaction ID</dt><dd data-testid="success-txn-id">${esc(result.transaction.id)}</dd>
+            <dt>Paid to</dt><dd data-testid="success-receiver">${esc(result.receiverName)}</dd>
+            <dt>Amount</dt><dd data-testid="success-amount">${money(result.transaction.amount)}</dd>
+            <dt>New balance</dt><dd data-testid="new-balance">${money(result.balance)}</dd>
+          </dl>
+          <div class="actions" style="justify-content:center">
+            <button class="btn btn-ghost" id="again-button" data-testid="pay-again-button">Make Another Payment</button>
+            <a class="btn btn-primary" href="/dashboard" data-link data-testid="done-button">Done</a>
+          </div>
+        </section>`);
+      document.getElementById('again-button').addEventListener('click', () => {
+        Object.assign(draft, { receiver: '', amount: '', purpose: '', remarks: '', receiverName: '' });
+        step1();
+      });
+    }
+  }
+
+  // ---------- TRANSACTIONS ----------
+  async function renderTransactions() {
+    document.title = 'Transaction History | Sajilo Wallet';
+    shell('/transactions', `
+      <h1>Transaction History</h1>
+      <section class="card">
+        <div class="filters">
+          <div>
+            <label for="type-filter">Type</label>
+            <select id="type-filter" data-testid="type-filter">
+              <option>All</option><option>Credit</option><option>Debit</option>
+            </select>
+          </div>
+          <div>
+            <label for="search">Search</label>
+            <input id="search" type="search" placeholder="Search by ID or description" data-testid="search-input">
+          </div>
+        </div>
+      </section>
+      <section class="card">
+        <p data-testid="txn-count" id="txn-count">Loading...</p>
+        <div id="txn-body"></div>
+      </section>`);
+
+    const typeSel = document.getElementById('type-filter');
+    const search = document.getElementById('search');
+    let timer;
+    async function load() {
+      const q = new URLSearchParams({ type: typeSel.value, q: search.value });
+      let list;
+      try { list = (await api('GET', '/api/transactions?' + q)).data; } catch { return; }
+      if (location.pathname !== '/transactions') return;
+      document.getElementById('txn-count').textContent = `Showing ${list.length} transaction${list.length === 1 ? '' : 's'}`;
+      document.getElementById('txn-body').innerHTML = list.length ? `
+        <div class="table-wrap"><table data-testid="txn-table">
+          <thead><tr><th>Date</th><th>Transaction ID</th><th>Description</th><th>Type</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>${list.map((t) => `
+            <tr data-testid="txn-row">
+              <td data-testid="txn-date">${esc(t.date)}</td>
+              <td data-testid="txn-id">${esc(t.id)}</td>
+              <td data-testid="txn-description">${esc(t.description)}</td>
+              <td data-testid="txn-type" class="${t.type === 'Credit' ? 'credit' : 'debit'}">${esc(t.type)}</td>
+              <td data-testid="txn-amount">${money(t.amount)}</td>
+              <td data-testid="txn-status">${esc(t.status)}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>` : `<p data-testid="empty-state">No transactions found</p>`;
+    }
+    typeSel.addEventListener('change', load);
+    search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
+    load();
+  }
+
+  // ---------- start ----------
+  fetch('/api/config').then((r) => r.json()).then((c) => { config = c; }).catch(() => {}).finally(render);
+})();
+</script>
+</body>
+</html>
