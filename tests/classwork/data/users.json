@@ -1,0 +1,5 @@
+{
+  "ram":  { "username": "ram.thapa",   "password": "Ram@1234",  "name": "Ram Thapa",   "mobile": "9841000001", "pin": "1234" },
+  "sita": { "username": "sita.sharma", "password": "Sita@1234", "name": "Sita Sharma", "mobile": "9851000002", "pin": "4321" },
+  "hari": { "username": "hari.karki",  "password": "Hari@1234", "name": "Hari Karki",  "mobile": "9861000003", "pin": "1111" }
+}
