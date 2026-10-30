@@ -1,5 +1,6 @@
 import { test as base, expect, Page } from '@playwright/test';
 import users from './data/users.json';
+import { LoginPage } from './pages/LoginPage';
 
 type MyFixtures = { loggedInPage: Page }; // custom fixtures
 
@@ -8,17 +9,16 @@ export const test = base.extend<MyFixtures>({
     // TODO 1: put the app data back to its starting state
     //         (POST /api/test/reset with the request fixture)
     await request.post('/api/test/reset'); //send HTTP requests with request to the backend
-
+    // expect(resetResponse.ok(),'The test reset endpoint should return a successful response').toBeTruthy();
     // TODO 2: open /login and log in as users.ram
-    await page.goto('/login');
-    await page.getByLabel('Username').fill(users.ram.username);
-    await page.getByLabel('Password').fill(users.ram.password);
-    await page.getByRole('button', {name: 'Login'}).click();
-
+    const loginPage = new LoginPage(page);
+    await loginPage.goto();
+    await loginPage.login(users.ram.username, users.ram.password);
+    
     // TODO 3: assert that the URL ends with /dashboard
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await loginPage.loginSuccess();
 
-    await use(page);   // the test runs here
+    await use(page);   // the test runs here, already logged in
   },
 });
 
