@@ -1,0 +1,30 @@
+[
+  {
+    "id": "TS-01",
+    "title": "search by transaction ID",
+    "searchTerm": "TXN1006",
+    "expectedCount": 1,
+    "expectedDescription": "Received from Sita Sharma"
+  },
+  {
+    "id": "TS-02",
+    "title": "search by description keyword",
+    "searchTerm": "bill",
+    "expectedCount": 2,
+    "expectedDescription": "NEA Electricity bill"
+  },
+  {
+    "id": "TS-03",
+    "title": "invalid search",
+    "searchTerm": "NonExistentTXN",
+    "expectedCount": 0,
+    "expectedDescription": null
+  },
+  {
+    "id": "TS-04",
+    "title": "search by date",
+    "searchTerm": "2026-10-18",
+    "expectedCount": 0,
+    "expectedDescription": null
+  }
+]
